@@ -5,7 +5,19 @@ FILE *fp;
 unsigned int wlen = 0;
 uint32_t n = 0;
 char buff[MAX_WORD_SIZE];
+uint8_t verbose = 0;
+uint32_t port = 22;
 
+void help(){
+	printf("\nMultithreaded SSH scan tool for networks\n");
+	printf("Use: sshscan [OPTIONS] [USER_PASSW FILE] [IP RANGE]\n");
+	printf("Options:\n");
+	printf("\t-t [NUMTHREADS]: Change the number of threads used. Default is %d\n",DEFAULT_THREADPOOL_SIZE);
+	printf("\t-p [PORT]: Specify another port to connect to\n");
+	printf("\t-h : Show this help\n");
+	printf("\t-v : Verbose mode\n");
+
+}
 void to_bytes(uint32_t val, uint8_t *bytes){
     bytes[0] = (uint8_t) val;
     bytes[1] = (uint8_t) (val >> 8);
@@ -26,12 +38,10 @@ char *ip2str(uint32_t val)
 }
 
 int parseSubnet(char *subnet_str, uint32_t *prefix, uint32_t *prefixLength){
-	printf("%s",subnet_str);
 	int result;
 	uint8_t ipbytes[4] = {0,0,0,0};
 
 	result = sscanf(subnet_str, "%hhd.%hhd.%hhd.%hhd/%d", &ipbytes[0], &ipbytes[1], &ipbytes[2], &ipbytes[3], prefixLength);
-	printf("\n %d.%d.%d.%d \n", ipbytes[0],ipbytes[1],ipbytes[2],ipbytes[3]);
 	if (result < 0 ) return result;
 	else{
 		*prefix = 0x00;
@@ -53,6 +63,7 @@ int ConnectSSH(uint32_t ipaddr, char* user, char *passwd){
 		return return_val;
 	ssh_options_set(my_ssh_session, SSH_OPTIONS_HOST, ip2str(ipaddr));
 	ssh_options_set(my_ssh_session, SSH_OPTIONS_USER, user);
+	ssh_options_set(my_ssh_session, SSH_OPTIONS_PORT, &port);
 
 	// Connect to server
 	rc = ssh_connect(my_ssh_session);
@@ -64,13 +75,12 @@ int ConnectSSH(uint32_t ipaddr, char* user, char *passwd){
 
 	rc = ssh_userauth_password(my_ssh_session, NULL, passwd);
 	if (rc != SSH_AUTH_SUCCESS){
-		//if (DEBUGON) printf(ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC" Failed with user:%s  pass:%s\n",ip2str(ipaddr),user,passwd);
-		fprintf(stderr, ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC"Error authenticating with password: %s\n",ip2str(ipaddr),ssh_get_error(my_ssh_session));
+		if (verbose) fprintf(stderr, ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC"Error authenticating with user:%s pass: %s, %s\n",ip2str(ipaddr),user,passwd,ssh_get_error(my_ssh_session));
 		ssh_disconnect(my_ssh_session);
 		ssh_free(my_ssh_session);
 		return return_val;
 	}else if(rc == SSH_AUTH_SUCCESS){
-		if (DEBUGON) printf(ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC" Succeed with user:%s  pass:%s\n",ip2str(ipaddr),user,passwd);
+		printf(ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC" Succeed with user:%s  pass:%s\n",ip2str(ipaddr),user,passwd);
 		return_val=1;
 	}
 	ssh_disconnect(my_ssh_session);
@@ -81,7 +91,7 @@ int ConnectSSH(uint32_t ipaddr, char* user, char *passwd){
 void checkSSH(void *context){
 	thread_arg_t *targs = context;
 	int j = 0;
-	if (DEBUGON) printf(ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC" Connecting\n",ip2str(targs->ipadrr));
+	if (verbose) printf(ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC" Connecting\n",ip2str(targs->ipadrr));
 	for(j=0;j<targs->wlen;j++){
 		char user[MAX_WORD_SIZE];
 		char passwd[MAX_WORD_SIZE];
@@ -89,7 +99,7 @@ void checkSSH(void *context){
 		result = sscanf(targs->wtable[j], "%128[^,],%s", user,passwd);
 		//printf(ANSI_COLOR_YELLOW"user:%s   paswd:%s\n"ANSI_COLOR_RESET,user,passwd);
 		if(result<0) {
-			printf("ERR\n");
+			printf("Error splitting user and password from user,password file.\n");
 			break;
 		}
 		//if (DEBUGON) printf("[%s] %d\n",ip2str(targs->ipadrr),targs->ipadrr);
@@ -100,19 +110,31 @@ void checkSSH(void *context){
 }
 
 int main(int argc, char ** argv){
-	if(argc!=4){
-		printf("Incorrect arguments number:\n");
-		printf("\t %s [IP range] [wordlist] [nthreads]\n",argv[0]);
-		exit(-1);
-	}
-	nproc = atoi(argv[3]);
-	if(nproc==1){
-		printf("Minium thread number is 2.\n");
-		exit(-1);
-	}
+  int c;
+
+  while ((c = getopt (argc, argv, "hvp:t:")) != -1)
+    switch (c){
+      case 'h':
+        help();
+        exit(0);
+        break;
+      case 'v':
+        verbose = 1;
+        break;
+      case 'p':
+        port = atoi(optarg);
+        break;
+      case 't':
+        nproc = atoi(optarg);
+        break;
+      }
 	
+	if(argc-optind!=2){
+		printf("Wrong number of arguments\nHint:\t %s X.X.X.X/X testfile\n",argv[0]);
+		exit(0);
+	}
+    
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
-	//ssh_threads_set_callbacks(ssh_threads_get_noop());
 	ssh_init();
 
 	threadpool thpool = thpool_init(nproc);
@@ -121,9 +143,8 @@ int main(int argc, char ** argv){
 	uint32_t prefix = 0;
 	uint32_t nhosts = 0;
 
-	if(parseSubnet(argv[1],&ip_addr,&prefix)<0){
-		printf("Error reading subnet: %s\n",argv[2]);
-		printf("Format must be X.X.X.X/S\n");
+	if(parseSubnet(argv[optind + 1], &ip_addr,&prefix)<0){
+		printf("Error reading subnet: %s, format must be X.X.X.X/S\n",argv[2]);
 		exit(-1);
 	}
 	if(prefix>32){
@@ -137,13 +158,14 @@ int main(int argc, char ** argv){
 		exit(-1);
 	}
 
-	fp = fopen(argv[2], "r");
+	fp = fopen(argv[optind], "r");
 	while(fgets(buff, MAX_WORD_SIZE, (FILE*)fp)!=NULL)	wlen++;
-	printf("password-user file \"%s\" has %d combinations\n",argv[2],wlen);
+	printf("password-user file \"%s\" has %d combinations\n",argv[optind],wlen);
 	fclose(fp);
-	if (DEBUGON) printf("Reading password-user file\n");
+	
+	if (verbose) printf("Reading password-user file\n");
 	char *words[wlen];
-	fp = fopen(argv[2], "r");
+	fp = fopen(argv[optind], "r");
 	unsigned int index = 0;
 	while(fgets(buff, MAX_WORD_SIZE, (FILE*)fp)!=NULL){
 		words[index] = (char *) malloc(strlen(buff));
@@ -174,12 +196,13 @@ int main(int argc, char ** argv){
 	}
 	
 	printf("%d direcciones analizadas, %d direcciones vulnerables\n",nhosts,autenticated);
+	/*
 	for(n=0;n<nhosts;n++){
 		int solindx = targs[n].solution;
 		if(solindx!=-1){
-			printf("\t [%s] user,pass:  %s ",ip2str(targs[n].ipadrr),words[solindx-1]);
+			printf("\t [%s] user,pass:  %s \n",ip2str(targs[n].ipadrr),words[solindx-1]);
 		}
-	}
+	}*/
 	for(n=0;n<wlen;n++){
 		free(words[n]);
 	}

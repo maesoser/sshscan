@@ -16,6 +16,8 @@
 #include <arpa/inet.h>
 #include <poll.h>
 #include <fcntl.h>
+#include <ctype.h>
+#include <getopt.h>
 
 #include "thpool.h"
 
@@ -38,6 +40,7 @@
     
 #define DEBUGON 1
 #define MAX_WORD_SIZE 128
+#define DEFAULT_THREADPOOL_SIZE 16
 
 typedef struct {
 	uint32_t ipadrr;

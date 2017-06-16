@@ -11,13 +11,20 @@ You need to install `libssh-dev`. After that, you can just invoque `make`
 This is going to change, probably.
 
 ```
-sshscan [IP]/[MASK] [USER-PASSWD] [THREADS]
+sshscan [OPTIONS] [USER_PASSW FILE] [IP RANGE]
 ```
+
+**Options** are:
+
+- `-t [NUMTHREADS]`: Change the number of threads used. Default is 32.
+- `-p [PORT]`: Specify another port to connect to.
+- `-h` : Show this help.
+- `-v` : Verbose mode.
 
 ## Acknowledgements
 
 - [**libssh**](https://www.libssh.org/)
-- [Pithiko's Thread Pool](https://github.com/Pithikos/C-Thread-Pool)
+- [**Pithiko's Thread Pool**](https://github.com/Pithikos/C-Thread-Pool)
 
 ## Things you should know
 
