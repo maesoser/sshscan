@@ -1,20 +1,23 @@
 #include "sshscan.h"
 
-int nproc = 10;
+unsigned int nproc = 10;
+unsigned long timeout = 3;
 FILE *fp;
 unsigned int wlen = 0;
 uint32_t n = 0;
 char buff[MAX_WORD_SIZE];
 uint8_t verbose = 0;
 uint32_t port = 22;
-unsigned long timeout = 3;
+
+const unsigned int d_nproc = 10;
+const unsigned long d_timeout = 3;
 
 void help(){
     printf("\nMultithreaded SSH scan tool for networks\n");
     printf("Use: sshscan [OPTIONS] [USER_PASSW FILE] [IP RANGE]\n");
     printf("Options:\n");
-    printf("\t-t [NUMTHREADS]: Change the number of threads used. Default is %d\n",nproc);
-    printf("\t-s [TIMEOUT]: Change the timeout for the connection in seconds. Default is %ld\n",timeout);
+    printf("\t-t [NUMTHREADS]: Change the number of threads used. Default is %d\n",d_nproc);
+    printf("\t-s [TIMEOUT]: Change the timeout for the connection in seconds. Default is %ld\n",d_timeout);
     printf("\t-p [PORT]: Specify another port to connect to\n");
     printf("\t-h : Show this help\n");
     printf("\t-v : Verbose mode\n");
@@ -120,7 +123,7 @@ void checkSSH(void *context){
 int main(int argc, char ** argv){
   int c;
 
-  while ((c = getopt (argc, argv, "hvp:t:")) != -1)
+  while ((c = getopt (argc, argv, "hvp:t:s:")) != -1)
     switch (c){
       case 'h':
         help();
